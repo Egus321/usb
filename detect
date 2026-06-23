@@ -1,0 +1,133 @@
+#!/bin/sh
+# Polyglot: PowerShell + POSIX shell в одном файле.
+# Показывает модальное окно с текстом "hi from usb" на Windows и на Linux (если доступно GUI).
+# Запуск:
+#  - Linux/macOS: curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/detect | sh
+#  - Windows (PowerShell): powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -useb https://raw.githubusercontent.com/<OWNER>/<REPO>/main/detect | iex"
+
+: <<'POWERSHELL'
+@"  # начало PowerShell here-string
+
+# PowerShell-часть: показать MessageBox с текстом "hi from usb"
+try {
+    # Попробовать WPF (PresentationFramework)
+    Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
+    [System.Windows.MessageBox]::Show('hi from usb') | Out-Null
+    exit 0
+}
+catch {
+    try {
+        # Попробовать Windows Forms
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+        [System.Windows.Forms.MessageBox]::Show('hi from usb') | Out-Null
+        exit 0
+    }
+    catch {
+        try {
+            # Попробовать через WScript (COM)
+            $shell = New-Object -ComObject WScript.Shell
+            # popup(text, timeoutSeconds, title, type) - timeout 0 чтобы ждать
+            $shell.Popup('hi from usb', 0, 'Message', 0) | Out-Null
+            exit 0
+        }
+        catch {
+            # Фолбэк: вывести в консоль
+            Write-Output 'hi from usb'
+            exit 0
+        }
+    }
+}
+
+"@  # конец PowerShell here-string
+POWERSHELL
+
+# -----------------------
+# POSIX shell-часть ниже
+# -----------------------
+show_with_zenity() {
+  zenity --info --no-wrap --text="hi from usb" 2>/dev/null && return 0
+  return 1
+}
+
+show_with_kdialog() {
+  kdialog --msgbox "hi from usb" 2>/dev/null && return 0
+  return 1
+}
+
+show_with_yad() {
+  yad --text="hi from usb" --button=OK 2>/dev/null && return 0
+  return 1
+}
+
+show_with_xmessage() {
+  # xmessage обычно показывает модальное окно
+  xmessage -center "hi from usb" 2>/dev/null && return 0
+  return 1
+}
+
+show_with_gxmessage() {
+  gxmessage "hi from usb" 2>/dev/null && return 0
+  return 1
+}
+
+show_with_notify_send() {
+  # notify-send не модальный, но даст GUI-уведомление
+  notify-send "hi from usb" 2>/dev/null && return 0
+  return 1
+}
+
+show_with_python_tk() {
+  # Попытка вызвать Tkinter через python3 или python
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY' 2>/dev/null
+try:
+    import tkinter as tk
+    from tkinter import messagebox
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo("", "hi from usb")
+    root.destroy()
+except Exception:
+    raise
+PY
+    test_ret=$?
+    [ $test_ret -eq 0 ] && return 0 || return 1
+  elif command -v python >/dev/null 2>&1; then
+    python - <<'PY' 2>/dev/null
+try:
+    import Tkinter as tk
+    import tkMessageBox as messagebox
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo("", "hi from usb")
+    root.destroy()
+except Exception:
+    raise
+PY
+    test_ret=$?
+    [ $test_ret -eq 0 ] && return 0 || return 1
+  else
+    return 1
+  fi
+}
+
+# Попробуем по порядку известные GUI-инструменты
+if show_with_zenity; then exit 0; fi
+if show_with_kdialog; then exit 0; fi
+if show_with_yad; then exit 0; fi
+if show_with_gxmessage; then exit 0; fi
+if show_with_xmessage; then exit 0; fi
+if show_with_python_tk; then exit 0; fi
+# notify-send как последний GUI-фолбэк (не модальный)
+if show_with_notify_send; then exit 0; fi
+
+# Если ничего не сработало — определить ОС и вывести текст в консоль
+uname_s=$(uname -s 2>/dev/null || echo Unknown)
+case "$uname_s" in
+  Linux*)  echo "hi from usb (linux, no GUI available)" ;;
+  Darwin*) echo "hi from usb (macos, no GUI available)" ;;
+  CYGWIN*|MINGW*|MSYS*) echo "hi from usb (windows, shell fallback)" ;;
+  *)       echo "hi from usb (unknown environment)" ;;
+esac
+
+exit 0
