@@ -1,3 +1,6 @@
+# Переключаем на английский язык
+Set-WinUILanguageOverride -Language en-US
+
 try {
     Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
     [System.Windows.MessageBox]::Show('hi from usb') | Out-Null
