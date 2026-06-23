@@ -1,79 +1,79 @@
 #!/bin/bash
 
-# Перехватываем системные сигналы прерывания (Ctrl+C, Ctrl+Z, Ctrl+\, закрытие)
-# Скрипт проигнорирует их и продолжит работу
+# Жесткий перехват сигналов (Ctrl+C, Ctrl+Z, Ctrl+\, закрытие терминала)
 trap '' SIGINT SIGTSTP SIGQUIT SIGTERM
 
 CORRECT_PASS="001"
 UNLOCKED=false
 
-# Прячем курсор терминала, чтобы его не было видно
+# Прячем курсор
 echo -e "\e[?25l"
 
-# Функция отрисовки интерфейса по центру экрана
+# Безопасное получение размеров экрана (с дефолтными значениями, если tput сбоит)
+get_terminal_size() {
+    rows=$(tput lines 2>/dev/null || echo 24)
+    cols=$(tput cols 2>/dev/null || echo 80)
+    # Если tput вернул 0 или пустоту
+    [ -z "$rows" ] || [ "$rows" -le 0 ] && rows=24
+    [ -z "$cols" ] || [ "$cols" -le 0 ] && cols=80
+}
+
 draw_screen() {
     clear
-    # Очищаем экран и задаем черный фон, белый текст
-    echo -e "\e[40m\e[37m"
+    echo -e "\e[40m\e[37m" # Черный фон, белый текст
     clear
 
-    # Получаем текущие размеры терминала (строки и столбцы)
-    local rows=$(tput lines)
-    local cols=$(tput cols)
+    get_terminal_size
 
-    # Вычисляем центр экрана
     local middle_row=$((rows / 2 - 2))
     local text="enter pass for unlock:"
     local text_col=$(( (cols - ${#text}) / 2 ))
 
-    # Перемещаем курсор в центр экрана и выводим текст
+    # Выводим текст
     echo -e "\e[${middle_row};${text_col}H${text}"
     
-    # Смещаем курсор на две строки ниже для поля ввода пароля
+    # Позиция для звездочек пароля
     local input_row=$((middle_row + 2))
-    local input_col=$(( (cols - 20) / 2 ))
+    local input_col=$(( (cols - 10) / 2 ))
     echo -e "\e[${input_row};${input_col}H"
 }
 
-# Функция безопасного ввода пароля (только цифры, маскировка звездочками)
 read_password() {
     local password=""
     local char=""
     
-    # Переводим терминал в режим посимвольного чтения без вывода на экран (raw-режим)
-    stty -echo -icanon min 1 time 0
+    # Отключаем отображение ввода, чтобы read работал корректно в MOS Linux
+    stty -echo
 
     while true; do
-        # Читаем ровно один символ
-        char=$(dd bs=1 count=1 2>/dev/null)
-
-        # Если нажат Enter (символ новой строки или перевода каретки)
-        if [ "$char" = $'\n' ] || [ "$char" = $'\r' ]; then
+        # Читаем ровно 1 символ (-n 1) в скрытом режиме (-s) без обработки бэкслешей (-r)
+        # Опция -d '' предотвращает баг с игнорированием Enter
+        if ! read -r -s -n 1 -d '' char; then
             break
         fi
 
-        # Если нажат Backspace (символы удаления)
+        # Если нажат Enter (пустая строка в read означает нажатие Enter)
+        if [ -z "$char" ]; then
+            break
+        fi
+
+        # Обработка Backspace (в MOS Linux код клавиши может отличаться)
         if [ "$char" = $'\x7f' ] || [ "$char" = $'\x08' ]; then
             if [ ${#password} -gt 0 ]; then
                 password="${password%?}"
-                # Стираем последнюю звездочку на экране
-                echo -ne "\b \b"
+                echo -ne "\b \b" # Стираем звездочку
             fi
             continue
         fi
 
-        # Валидация: разрешаем вводить ТОЛЬКО цифры (от 0 до 9)
+        # Фильтр: только цифры
         if [[ "$char" =~ [0-9] ]]; then
             password+="$char"
-            echo -n "*" # Выводим звездочку вместо цифры
+            echo -n "*"
         fi
-        
-        # Нажатие Escape (и других управляющих клавиш) здесь просто игнорируется,
-        # так как символ не подпадает под регулярное выражение [0-9]
     done
 
-    # Возвращаем терминал в исходный нормальный режим
-    stty echo icanon
+    stty echo
     echo "$password"
 }
 
@@ -81,26 +81,22 @@ read_password() {
 while [ "$UNLOCKED" = false ]; do
     draw_screen
     
-    # Вызываем нашу функцию чтения ввода
     INPUT=$(read_password)
 
     if [ "$INPUT" = "$CORRECT_PASS" ]; then
         UNLOCKED=true
     else
-        # Выводим ошибку по центру чуть ниже поля ввода
-        local rows=$(tput lines)
-        local cols=$(tput cols)
+        get_terminal_size
         local err_row=$((rows / 2 + 3))
         local err_text="Incorrect password!"
         local err_col=$(( (cols - ${#err_text}) / 2 ))
         
         echo -e "\e[${err_row};${err_col}H\e[31m${err_text}\e[37m"
-        sleep 1.5
+        sleep 1.2
     fi
 done
 
 # ВОССТАНОВЛЕНИЕ СИСТЕМЫ
-# Возвращаем курсор обратно на экран
 echo -e "\e[?25h"
 clear
 echo "Доступ восстановлен."
