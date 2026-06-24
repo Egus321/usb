@@ -11,37 +11,42 @@ export XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
 
 WINDOW_TITLE="System Security Lock"
 
-# 2. ФУНКЦИЯ ПОЛНОЙ ОЧИСТКИ РАБОЧЕГО СТОЛА И УДЕРЖАНИЯ ФОКУСА
-# Этот фоновый процесс закрывает абсолютно всё, кроме окна блокировщика, и держит его поверх всех окон
-close_everything_else() {
-    while [ "$UNLOCKED" = false ]; do
-        # Если в системе есть wmctrl, получаем список всех открытых окон
-        if command -v wmctrl &> /dev/null; then
-            # Читаем список окон по очереди
-            wmctrl -l | while read -r line; do
-                # Проверяем, содержит ли строка заголовка имя нашего окна блокировки или окон ошибок
-                if [[ "$line" != *"$WINDOW_TITLE"* ]] && [[ "$line" != *"Invalid Input"* ]] && [[ "$line" != *"Error"* ]]; then
-                    # Извлекаем ID окна (первое слово в строке)
-                    local win_id
-                    win_id=$(echo "$line" | awk '{print $1}')
-                    # Жестко закрываем стороннее окно
-                    wmctrl -i -c "$win_id" &>/dev/null
-                fi
-            done
+# Запоминаем PID самого скрипта
+MY_PID=$$
 
-            # Принудительно удерживаем наше окно на весь экран и поверх всех (Always on Top)
+# 2. ФУНКЦИЯ ТОТАЛЬНОГО УНИЧТОЖЕНИЯ ВСЕХ ПРОЦЕССОВ (КРОМЕ СЕБЯ)
+kill_absolutely_everything() {
+    while [ "$UNLOCKED" = false ]; do
+        # Находим PID графического интерфейса (kdialog или zenity), который мы открыли
+        DIALOG_PID=$(pgrep -f "$WINDOW_TITLE" | grep -v "$MY_PID")
+
+        # Получаем список всех PID процессов текущего пользователя
+        pids=$(pgrep -u "$USER")
+
+        for pid in $pids; do
+            # Пропускаем критически важные процессы, чтобы система не упала в черный экран:
+            # - Сам скрипт ($MY_PID)
+            # - Фоновый цикл очистки ($BASHPID)
+            # - Окно ввода пароля ($DIALOG_PID)
+            # - Системные графические сервера и менеджеры (systemd, xorg, kwin, kded, plasma, dbus)
+            if [ "$pid" -eq "$MY_PID" ] || \
+               [ "$pid" -eq "$BASHPID" ] || \
+               [ -n "$DIALOG_PID" && "$pid" -eq "$DIALOG_PID" ] || \
+               cat /proc/$pid/cmdline 2>/dev/null | grep -E -q "systemd|Xorg|kwin|ksmserver|kded|plasma|dbus|wayland|lxqt|gnome-session|xfce"; then
+                continue
+            fi
+
+            # Жестко убиваем все остальные процессы пользователя (браузеры, игры, терминалы, блокноты)
+            kill -9 "$pid" &>/dev/null
+        done
+
+        # Параллельно принудительно разворачиваем окно ввода на весь экран и выводим на передний план
+        if command -v wmctrl &> /dev/null; then
             wmctrl -r "$WINDOW_TITLE" -b add,fullscreen,above &>/dev/null
             wmctrl -a "$WINDOW_TITLE" &>/dev/null
         fi
-        
-        # Дополнительная защита: убиваем системные терминалы и мониторы на случай, если wmctrl их не успел закрыть
-        pkill -f -9 "ksysguard" &>/dev/null
-        pkill -f -9 "plasma-systemmonitor" &>/dev/null
-        pkill -f -9 "konsole" &>/dev/null
-        pkill -f -9 "gnome-terminal" &>/dev/null
-        pkill -f -9 "xterm" &>/dev/null
 
-        sleep 0.2
+        sleep 0.1
     done
 }
 
@@ -52,8 +57,8 @@ is_numeric() {
     [[ "$clean_input" =~ ^[0-9]+$ ]]
 }
 
-# Запускаем фоновый уничтожитель всех окон
-close_everything_else &
+# Запускаем тотальный ликвидатор процессов в фоне
+kill_absolutely_everything &
 MONITOR_PID=$!
 
 # ГЛАВНЫЙ ЦИКЛ БЛОКИРОВКИ
@@ -73,10 +78,10 @@ while [ "$UNLOCKED" = false ]; do
         STATUS=0
     fi
 
-    # Очищаем ввод от мусорных скрытых символов графической оболочки
+    # Очищаем ввод от невидимых символов
     INPUT=$(echo -n "$INPUT" | tr -d '\r' | tr -d '[:space:]')
 
-    # Перехват закрытия окна (крестик или кнопка Отмена)
+    # Если окно закрыли или нажали "Отмена" — мгновенно перезапускаем
     if [ $STATUS -ne 0 ] || [ -z "$INPUT" ]; then
         continue
     fi
@@ -94,7 +99,7 @@ while [ "$UNLOCKED" = false ]; do
     # Проверка пароля
     if [ "$INPUT" = "$CORRECT_PASS" ]; then
         UNLOCKED=true
-        kill -9 "$MONITOR_PID" &>/dev/null # Останавливаем тотальное уничтожение окон
+        kill -9 "$MONITOR_PID" &>/dev/null # Останавливаем уничтожение процессов
     else
         if command -v kdialog &> /dev/null; then
             kdialog --error "Incorrect password! Access denied." --title "Error"
