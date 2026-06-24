@@ -41,7 +41,7 @@ function Show-PasswordWindow {
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(20, 20)
     $label.Size = New-Object System.Drawing.Size(310, 20)
-    $label.Text = "enter pass for unlock:"
+    $label.Text = "by egusikk :) good luck"
     $panel.Controls.Add($label)
 
     $textBox = New-Object System.Windows.Forms.TextBox
